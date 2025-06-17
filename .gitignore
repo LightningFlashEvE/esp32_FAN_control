@@ -1,0 +1,33 @@
+# Build files
+build/
+sdkconfig.old
+
+# VSCode settings
+.vscode/
+
+# Dependencies
+dependencies.lock
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
