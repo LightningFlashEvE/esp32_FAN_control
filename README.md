@@ -158,10 +158,7 @@ esp32_FAN_control/
 # 项目依赖 (idf_component.yml)
 dependencies:
   idf: ">=5.4.0"
-  espressif/ds18b20: "^1.0.0"         # 温度传感器
-  espressif/onewire_bus: "^1.0.0"     # 1-Wire总线
-  espressif/ssd1306: "^1.1.0"         # OLED显示  
-  espressif/cjson: "^1.7.15"          # JSON处理
+  # 仅使用ESP-IDF官方组件和本地自定义组件，已移除所有第三方库依赖
 ```
 
 ## 🛠️ 故障排除
