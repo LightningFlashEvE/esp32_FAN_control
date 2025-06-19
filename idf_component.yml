@@ -5,24 +5,5 @@ dependencies:
   # 核心ESP-IDF版本要求
   idf: ">=5.4.0"
   
-  # 🌡️ 温度传感器库
-  espressif/ds18b20: "^1.0.0"           # DS18B20数字温度传感器驱动
-  espressif/onewire_bus: "^1.0.0"       # OneWire总线协议库
-  
-  # 📺 显示驱动库
-  espressif/ssd1306: "^1.1.0"           # SSD1306 OLED显示屏驱动
-  
-  # 📡 网络通信库
-  espressif/cjson: "^1.7.15"            # 轻量级JSON解析和生成库
-  
-  # 🎮 用户交互库
-  espressif/rotary_encoder: "^1.0.0"    # 旋转编码器处理库
-  espressif/button: "^3.2.0"            # 按钮事件处理库
-  
-  # 📝 说明：以下库通常是ESP-IDF内置的，无需显式声明
-  # - esp_mqtt: MQTT客户端 (内置)
-  # - esp_wifi: WiFi功能 (内置)
-  # - wifi_provisioning: WiFi配置 (内置)
-  # - esp_http_server: HTTP服务器 (内置)
-  # - nvs_flash: 非易失性存储 (内置)
-  # - driver: 硬件驱动 (内置)
+  # 只保留官方内置组件，无需声明外部库
+  # 如需第三方库请手动添加

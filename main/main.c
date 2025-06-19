@@ -13,10 +13,6 @@
 #include "mqtt_comm.h"       // 使用cJSON版本
 #include "wifi_provision.h"  // 自定义WiFi配网模块
 
-// WiFi Provisioning - 使用ESP-IDF官方库
-#include "wifi_provisioning/manager.h"
-#include "wifi_provisioning/scheme_ble.h"
-
 static const char *TAG = "MAIN";
 
 // GPIO定义

@@ -1,7 +1,7 @@
 #include "mqtt_comm.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
-#include "cjson.h"
+#include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -156,7 +156,6 @@ esp_mqtt_client_handle_t mqtt_comm_init(void) {
         .credentials.authentication.password = "admin",
         .session.keepalive = 60,
         .session.disable_clean_session = false,
-        .network.refresh_connection_after_lost = true,
         .network.reconnect_timeout_ms = 5000,
         .network.timeout_ms = 10000,
     };
