@@ -1,19 +1,21 @@
 #include "oled_display.h"
-#include "driver/i2c.h"
+#include "ssd1306.h"
 #include "esp_log.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char* TAG = "OLED";
-#define OLED_ADDRESS 0x3C
+static ssd1306_handle_t ssd1306_dev = NULL;
 
 /**
- * @brief 初始化 OLED 显示屏 (SSD1306)，通过 I2C 接口
+ * @brief 初始化 OLED 显示屏 - 使用SSD1306专用库
  * @param i2c_num I2C 端口号
  * @param sda_pin SDA 引脚 GPIO
  * @param scl_pin SCL 引脚 GPIO
  */
 void oled_init(i2c_port_t i2c_num, gpio_num_t sda_pin, gpio_num_t scl_pin) {
-    i2c_config_t conf = {
+    // I2C配置
+    i2c_config_t i2c_conf = {
         .mode = I2C_MODE_MASTER,
         .sda_io_num = sda_pin,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
@@ -21,65 +23,71 @@ void oled_init(i2c_port_t i2c_num, gpio_num_t sda_pin, gpio_num_t scl_pin) {
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = 400000,
     };
-    i2c_param_config(i2c_num, &conf);
-    i2c_driver_install(i2c_num, I2C_MODE_MASTER, 0, 0, 0);
+    
+    ESP_ERROR_CHECK(i2c_param_config(i2c_num, &i2c_conf));
+    ESP_ERROR_CHECK(i2c_driver_install(i2c_num, I2C_MODE_MASTER, 0, 0, 0));
 
-    // 初始化命令序列
-    uint8_t init_cmds[] = {
-        0xAE, // 关闭显示
-        0x20, 0x00, // 设置内存寻址模式
-        0xB0, // 设置页起始地址
-        0xC8, // COM 输出扫描方向
-        0x00, // 低列地址
-        0x10, // 高列地址
-        0x40, // 起始行地址
-        0x81, 0xFF, // 对比度设置
-        0xA1, // 段重映射
-        0xA6, // 正常显示
-        0xA8, 0x3F, // 多路复用比率
-        0xA4, // 显示跟随 RAM 内容
-        0xD3, 0x00, // 显示偏移
-        0xD5, 0xF0, // 显示时钟分频比率
-        0xD9, 0x22, // 预充电周期
-        0xDA, 0x12, // COM 引脚配置
-        0xDB, 0x20, // VCOMH 撤销电平
-        0x8D, 0x14, // 电荷泵设置
-        0xAF // 开启显示
+    // SSD1306设备配置
+    ssd1306_config_t ssd1306_conf = {
+        .i2c_port = i2c_num,
+        .i2c_addr = 0x3C,
+        .width = 128,
+        .height = 64,
     };
-    for (int i = 0; i < sizeof(init_cmds); i++) {
-        uint8_t cmd[2] = {0x00, init_cmds[i]};
-        i2c_master_write_to_device(i2c_num, OLED_ADDRESS, cmd, 2, pdMS_TO_TICKS(1000));
+
+    // 创建SSD1306设备
+    ssd1306_dev = ssd1306_create(&ssd1306_conf);
+    if (ssd1306_dev == NULL) {
+        ESP_LOGE(TAG, "SSD1306设备创建失败");
+        return;
     }
-    ESP_LOGI(TAG, "OLED initialized");
+
+    // 初始化显示
+    ESP_ERROR_CHECK(ssd1306_init(ssd1306_dev));
+    ESP_ERROR_CHECK(ssd1306_clear_screen(ssd1306_dev, 0x00));
+    ESP_ERROR_CHECK(ssd1306_refresh_gram(ssd1306_dev));
+    
+    ESP_LOGI(TAG, "SSD1306 OLED初始化完成");
 }
 
 /**
- * @brief 更新 OLED 显示：显示温度、模式和风扇转速主题
- * @param temperature 当前温度值，单位摄氏度
+ * @brief 更新 OLED 显示 - 使用SSD1306库的高级功能
+ * @param temperature 当前温度值
  * @param speed 当前风扇速度百分比 (0-100)
  * @param auto_mode 当前模式：true=自动，false=手动
- *
- * 主题设计：
- *  第一行显示 "温度:xx.x°C 模式:自动/手动"
- *  第二行展示文本化进度条，表示风扇转速
  */
 void oled_display_update(float temperature, uint8_t speed, bool auto_mode) {
-    char line1[32];
-    char line2[32];
-    // 构建第一行字符串：温度和模式
-    snprintf(line1, sizeof(line1), "温度:%.1f°C 模式:%s", temperature, auto_mode ? "自动" : "手动");
-    
-    // 构建第二行字符串：速度进度条，共10格
-    char bar[12];
-    int filled = speed / 10; // 每格代表10%
-    for (int i = 0; i < 10; i++) {
-        bar[i] = (i < filled) ? '#' : '-';
+    if (!ssd1306_dev) {
+        ESP_LOGE(TAG, "SSD1306设备未初始化");
+        return;
     }
-    bar[10] = '\0';
-    snprintf(line2, sizeof(line2), "速度:%3d%% [%s]", speed, bar);
 
-    // TODO: 调用 OLED 驱动函数清屏与绘制文本，以下为示例日志输出
-    ESP_LOGI(TAG, "OLED 第一行: %s", line1);
-    ESP_LOGI(TAG, "OLED 第二行: %s", line2);
-    // 注意：实际显示需要按 SSD1306 协议写入指令和数据
+    // 清除屏幕
+    ssd1306_clear_screen(ssd1306_dev, 0x00);
+
+    // 第一行：温度和模式
+    char line1[32];
+    snprintf(line1, sizeof(line1), "温度:%.1f°C", temperature);
+    ssd1306_draw_string(ssd1306_dev, 0, 0, (const uint8_t*)line1, 12, 1);
+    
+    const char* mode_str = auto_mode ? "自动" : "手动";
+    ssd1306_draw_string(ssd1306_dev, 0, 16, (const uint8_t*)mode_str, 12, 1);
+
+    // 第二行：速度和进度条
+    char speed_text[16];
+    snprintf(speed_text, sizeof(speed_text), "速度:%d%%", speed);
+    ssd1306_draw_string(ssd1306_dev, 0, 32, (const uint8_t*)speed_text, 12, 1);
+
+    // 绘制进度条
+    int bar_width = (speed * 100) / 100;  // 100像素宽度
+    ssd1306_draw_rectangle(ssd1306_dev, 0, 48, 100, 16, 1);  // 外框
+    if (bar_width > 0) {
+        ssd1306_fill_rectangle(ssd1306_dev, 2, 50, bar_width-4, 12, 1);  // 填充
+    }
+
+    // 刷新显示
+    ESP_ERROR_CHECK(ssd1306_refresh_gram(ssd1306_dev));
+    
+    ESP_LOGI(TAG, "OLED更新: 温度=%.1f°C, 速度=%d%%, 模式=%s", 
+             temperature, speed, mode_str);
 }
