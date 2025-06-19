@@ -20,7 +20,10 @@ static const char *TAG = "MAIN";
 #define ENCODER_A_GPIO     GPIO_NUM_15
 #define ENCODER_B_GPIO     GPIO_NUM_2
 #define ENCODER_BTN_GPIO   GPIO_NUM_0
-#define FAN_PWM_GPIO       GPIO_NUM_18
+#define COOLER_PWM_GPIO    GPIO_NUM_18   // MOS管控制制冷片
+#define COOLER_PWM_CHANNEL LEDC_CHANNEL_0
+#define FAN_PWM_GPIO       GPIO_NUM_19   // 新增风扇PWM
+#define FAN_PWM_CHANNEL    LEDC_CHANNEL_1
 #define I2C_SDA_GPIO       GPIO_NUM_21
 #define I2C_SCL_GPIO       GPIO_NUM_22
 #define LEDC_CHANNEL       LEDC_CHANNEL_0
@@ -38,9 +41,10 @@ static system_state_t g_system = {
     .auto_mode = true,
     .manual_speed = 0,
     .temp_threshold = 30.0f,
-    .max_speed = 100,
-    .mqtt_client = NULL
+    .max_speed = 100,    .mqtt_client = NULL
 };
+
+uint8_t manual_cooler_power = 0; // 手动模式下制冷片功率（全局变量，供其他模块访问）
 
 /**
  * @brief 温度映射到风扇转速 - 可配置版本
@@ -57,17 +61,11 @@ static uint8_t map_temp_to_speed(float temp) {
 static void on_mode_change(bool auto_mode) {
     g_system.auto_mode = auto_mode;
     ESP_LOGI(TAG, "模式切换为: %s", auto_mode ? "自动" : "手动");
-    
-    if (!auto_mode) {
-        // 切换到手动模式时，设置为当前手动速度
-        fan_control_set_speed(g_system.manual_speed);
-    }
-    
-    // 立即更新显示和MQTT
+    // 切换模式时，OLED和MQTT立即刷新
     float temp = temp_sensor_get_temperature();
-    uint8_t display_speed = auto_mode ? map_temp_to_speed(temp) : g_system.manual_speed;
-    oled_display_update(temp, display_speed, auto_mode);
-    mqtt_comm_publish(g_system.mqtt_client, temp, display_speed, auto_mode);
+    uint8_t fan_speed = map_temp_to_speed(temp);
+    oled_display_update(temp, fan_speed, auto_mode);
+    mqtt_comm_publish(g_system.mqtt_client, temp, fan_speed, auto_mode);
 }
 
 /**
@@ -78,11 +76,22 @@ static void on_speed_change(uint8_t speed) {
     ESP_LOGI(TAG, "手动速度设置为: %d%%", speed);
     
     if (!g_system.auto_mode) {
-        fan_control_set_speed(speed);
+        fan_pwm_set_speed(speed);
         // 更新显示
         float temp = temp_sensor_get_temperature();
         oled_display_update(temp, speed, false);
         mqtt_comm_publish(g_system.mqtt_client, temp, speed, false);
+    }
+}
+
+static void on_encoder_change(uint8_t value) {
+    if (!g_system.auto_mode) {
+        manual_cooler_power = value;
+        ESP_LOGI(TAG, "手动模式下制冷片功率设置为: %d%%", value);
+        float temp = temp_sensor_get_temperature();
+        uint8_t fan_speed = map_temp_to_speed(temp);
+        oled_display_update(temp, fan_speed, false);
+        mqtt_comm_publish(g_system.mqtt_client, temp, fan_speed, false);
     }
 }
 
@@ -128,23 +137,16 @@ static void on_mqtt_config(const mqtt_config_t* cfg) {
  */
 static void auto_control_task(void *arg) {
     TickType_t last_wake_time = xTaskGetTickCount();
-    
     while (1) {
-        if (g_system.auto_mode) {
-            float temp = temp_sensor_get_temperature();
-            
-            if (temp != -127.0) {  // 温度读取成功
-                uint8_t target_speed = map_temp_to_speed(temp);
-                fan_control_set_speed(target_speed);
-                oled_display_update(temp, target_speed, true);
-                mqtt_comm_publish(g_system.mqtt_client, temp, target_speed, true);
-            } else {
-                ESP_LOGW(TAG, "温度传感器读取失败");
-                oled_display_update(-127.0, 0, true);
-            }
-        }
-        
-        // 精确5秒间隔
+        float temp = temp_sensor_get_temperature();
+        // 风扇始终自动运行
+        uint8_t fan_speed = map_temp_to_speed(temp);
+        fan_pwm_set_speed(fan_speed);
+        // 制冷片根据模式自动或手动
+        uint8_t cooler_power = g_system.auto_mode ? map_temp_to_speed(temp) : manual_cooler_power;
+        cooler_pwm_set_power(cooler_power);
+        oled_display_update(temp, fan_speed, g_system.auto_mode);
+        mqtt_comm_publish(g_system.mqtt_client, temp, fan_speed, g_system.auto_mode);
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5000));
     }
 }
@@ -165,6 +167,9 @@ static void on_got_ip(void* arg, esp_event_base_t event_base,
 
 void app_main(void) {
     ESP_LOGI(TAG, "ESP32 Fan Control Project Start");
+    
+    // 设置日志级别，抑制I2C弃用警告
+    esp_log_level_set("i2c", ESP_LOG_ERROR);
     
     // 1. 初始化 NVS
     esp_err_t ret = nvs_flash_init();
@@ -210,7 +215,8 @@ void app_main(void) {
 
     // 5. 初始化各组件
     temp_sensor_init(DS18B20_GPIO);
-    fan_control_init(LEDC_CHANNEL, FAN_PWM_GPIO);
+    cooler_pwm_init(COOLER_PWM_CHANNEL, COOLER_PWM_GPIO);
+    fan_pwm_init(FAN_PWM_CHANNEL, FAN_PWM_GPIO);
     oled_init(I2C_NUM_0, I2C_SDA_GPIO, I2C_SCL_GPIO);
     
     // 初始化 MQTT 客户端并设置回调，将句柄存储到全局结构体
@@ -219,7 +225,7 @@ void app_main(void) {
     mqtt_comm_set_config_callback(on_mqtt_config);
     
     user_input_init(ENCODER_A_GPIO, ENCODER_B_GPIO, ENCODER_BTN_GPIO,
-                    on_mode_change, on_speed_change);
+                    on_mode_change, on_encoder_change);
     
     // 6. 启动自动模式任务
     xTaskCreate(auto_control_task, "auto_control_task", 4096, NULL, 5, NULL);

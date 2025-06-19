@@ -1,7 +1,7 @@
 #include "temp_sensor.h"
 #include "esp_log.h"
 
-static const char* TAG = "TEMP_SENSOR";
+// static const char* TAG = "TEMP_SENSOR";  // 暂时未使用，注释掉避免警告
 
 /**
  * @brief 初始化DS18B20温度传感器 - 使用官方DS18B20库
