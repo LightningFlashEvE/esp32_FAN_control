@@ -134,7 +134,7 @@ idf.py flash monitor
 MQTT服务器: nas.phenosolar.com
 端口: 1883
 用户名: admin
-密码: admin
+密码: ****
 ```
 
 ### 消息格式
