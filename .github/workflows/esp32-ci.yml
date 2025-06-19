@@ -21,8 +21,9 @@ jobs:
       - name: Cache IDF tools
         uses: actions/cache@v3
         with:
-          path: ~/.espressif
+          path: /opt/esp        # ← 官方镜像实际安装位置
           key: idf-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+
 
       # 3. 编译 ESP32 工程
       - name: Build ESP32 project
